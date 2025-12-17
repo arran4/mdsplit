@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	markdown "github.com/teekennedy/goldmark-markdown"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	gfm "github.com/yuin/goldmark/extension"
 	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
@@ -27,21 +27,16 @@ func Split(data []byte, opts SplitOptions) error {
 	if opts.OutDir == "" {
 		opts.OutDir = "."
 	}
-	// Use MaxHeight as a proxy for max lines.
 	if opts.MaxHeight == 0 {
-		opts.MaxHeight = 40 // Default to 40 lines if not set
+		opts.MaxHeight = 40
 	}
 
-	// Create the output directory if it doesn't exist.
 	if err := os.MkdirAll(opts.OutDir, 0755); err != nil {
 		return err
 	}
 
-	// Create a new Goldmark parser and renderer.
 	parser := goldmark.New(goldmark.WithExtensions(gfm.GFM)).Parser()
 	renderer := markdown.NewRenderer()
-
-	// Parse the Markdown into an AST.
 	root := parser.Parse(text.NewReader(data))
 
 	var currentSlide bytes.Buffer
@@ -49,16 +44,8 @@ func Split(data []byte, opts SplitOptions) error {
 	currentLineCount := 0
 
 	for node := root.FirstChild(); node != nil; node = node.NextSibling() {
-		var nodeContent bytes.Buffer
-		if err := renderer.Render(&nodeContent, data, node); err != nil {
-			return err
-		}
-
-		nodeLineCount := bytes.Count(nodeContent.Bytes(), []byte{'\n'})
-
-		// Handle tables that are too long.
-		if node.Kind() == extast.KindTable && nodeLineCount > opts.MaxHeight {
-			// Write the current slide if it has content.
+		// Handle long tables by splitting them at the AST level.
+		if table, ok := node.(*extast.Table); ok && (table.ChildCount()-1) > opts.MaxHeight {
 			if currentSlide.Len() > 0 {
 				if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 					return err
@@ -68,39 +55,72 @@ func Split(data []byte, opts SplitOptions) error {
 				currentLineCount = 0
 			}
 
-			lines := strings.Split(nodeContent.String(), "\n")
-			header := lines[0] + "\n" + lines[1] + "\n"
-			rows := lines[2:]
-
-			tablePart := 1
-			for len(rows) > 0 {
-				continuationNote := fmt.Sprintf("\n_Table continued (part %d)_", tablePart)
-				chunkSize := opts.MaxHeight - 3 // Account for header and continuation note.
-				if chunkSize <= 0 {
-					chunkSize = 1
+			var header ast.Node
+			var rows []ast.Node
+			for child := table.FirstChild(); child != nil; child = child.NextSibling() {
+				if child.Kind() == extast.KindTableHeader {
+					header = child
+				} else if child.Kind() == extast.KindTableRow {
+					rows = append(rows, child)
 				}
-				if len(rows) <= chunkSize {
-					chunkSize = len(rows)
-				}
-
-				var slideContent bytes.Buffer
-				slideContent.WriteString(header)
-				slideContent.WriteString(strings.Join(rows[:chunkSize], "\n"))
-				slideContent.WriteString(continuationNote)
-
-				if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
-					return err
-				}
-
-				slideCount++
-				rows = rows[chunkSize:]
-				tablePart++
 			}
-			continue
+
+			if header != nil {
+				tablePart := 1
+				for len(rows) > 0 {
+					// Account for header, separator, and continuation note.
+					chunkSize := opts.MaxHeight - 2
+					if chunkSize <= 0 {
+						chunkSize = 1
+					}
+					if len(rows) < chunkSize {
+						chunkSize = len(rows)
+					}
+					chunk := rows[:chunkSize]
+					rows = rows[chunkSize:]
+
+					newTable := extast.NewTable()
+					newTable.Alignments = table.Alignments
+					// Manually reconstruct the header for each new table chunk.
+					newTable.AppendChild(newTable, manuallyCloneHeader(header, data))
+					for _, row := range chunk {
+						// We can move the row nodes directly to the new table,
+						// but it's safer to clone them as well.
+						// For now, we'll move them.
+						row.SetParent(nil)
+						newTable.AppendChild(newTable, row)
+					}
+
+					var slideContent bytes.Buffer
+					if err := renderer.Render(&slideContent, data, newTable); err != nil {
+						return err
+					}
+					// Add continuation note if there are more rows.
+					if len(rows) > 0 || tablePart > 1 {
+						note := fmt.Sprintf("\n_Table continued (part %d)_", tablePart)
+						if len(rows) == 0 {
+							note = fmt.Sprintf("\n_Table continued (part %d - final part)_", tablePart)
+						}
+						slideContent.WriteString(note)
+					}
+
+					if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
+						return err
+					}
+					slideCount++
+					tablePart++
+				}
+				continue
+			}
 		}
 
-		// If the current slide has content and adding the new node would exceed the max height,
-		// write the current slide and start a new one.
+		// Process regular nodes.
+		var nodeContent bytes.Buffer
+		if err := renderer.Render(&nodeContent, data, node); err != nil {
+			return err
+		}
+		nodeLineCount := bytes.Count(nodeContent.Bytes(), []byte{'\n'})
+
 		if currentSlide.Len() > 0 && currentLineCount+nodeLineCount > opts.MaxHeight {
 			if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 				return err
@@ -114,7 +134,6 @@ func Split(data []byte, opts SplitOptions) error {
 		currentLineCount += nodeLineCount
 	}
 
-	// Write the last slide to a file.
 	if currentSlide.Len() > 0 {
 		if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 			return err
@@ -124,9 +143,26 @@ func Split(data []byte, opts SplitOptions) error {
 	return nil
 }
 
-// writeSlide writes the content of a slide to a file.
 func writeSlide(outDir string, slideCount int, content *bytes.Buffer) error {
 	filename := fmt.Sprintf("slide-%d.md", slideCount)
 	filepath := filepath.Join(outDir, filename)
 	return os.WriteFile(filepath, content.Bytes(), 0644)
+}
+
+// manuallyCloneHeader creates a deep copy of a table header node.
+func manuallyCloneHeader(header ast.Node, source []byte) ast.Node {
+	headerRow := header.FirstChild()
+	newHeaderRow := extast.NewTableRow(nil)
+	for cell := headerRow.FirstChild(); cell != nil; cell = cell.NextSibling() {
+		newCell := extast.NewTableCell()
+		for textNode := cell.FirstChild(); textNode != nil; textNode = textNode.NextSibling() {
+			if text, ok := textNode.(*ast.Text); ok {
+				newText := ast.NewText()
+				newText.Segment = text.Segment
+				newCell.AppendChild(newCell, newText)
+			}
+		}
+		newHeaderRow.AppendChild(newHeaderRow, newCell)
+	}
+	return extast.NewTableHeader(newHeaderRow)
 }
