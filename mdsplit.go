@@ -9,9 +9,9 @@ import (
 
 	markdown "github.com/teekennedy/goldmark-markdown"
 	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark-gfm/ast"
+	gfm "github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
-	gfm "github.com/yuin/goldmark-gfm"
 )
 
 // SplitOptions holds the configuration for splitting the Markdown file.
@@ -57,7 +57,7 @@ func Split(data []byte, opts SplitOptions) error {
 		nodeLineCount := bytes.Count(nodeContent.Bytes(), []byte{'\n'})
 
 		// Handle tables that are too long.
-		if node.Kind() == ast.KindTable && nodeLineCount > opts.MaxHeight {
+		if node.Kind() == extast.KindTable && nodeLineCount > opts.MaxHeight {
 			// Write the current slide if it has content.
 			if currentSlide.Len() > 0 {
 				if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
