@@ -106,7 +106,7 @@ Final content here.`,
 			name:              "readme split",
 			input:             readmeContent,
 			opts:              SplitOptions{MaxHeight: 40},
-			expectedFileCount: 3,
+			expectedFileCount: 4,
 			expectedContentCheck: map[string]string{
 				"slide-1.md": `# mdsplit – Markdown Splitting (Go CLI & Library)
 
@@ -146,11 +146,7 @@ Requires Go 1.22 or newer.
 ` + "```" + `
 
 ### Flags`,
-				"slide-3.md": `---
-
-## How it works
-
-1. Parse Markdown with [` + "`yuin/goldmark`" + `](https://github.com/yuin/goldmark) and the [` + "`goldmark-gfm`" + `](https://github.com/yuin/goldmark-gfm) extension.
+				"slide-4.md": `1. Parse Markdown with [` + "`yuin/goldmark`" + `](https://github.com/yuin/goldmark) and the [` + "`goldmark-gfm`" + `](https://github.com/yuin/goldmark-gfm) extension.
 2. Walk the AST and split the content into multiple smaller Markdown files based on a maximum line count.
 3. If a table is too long, it is split into multiple slides, with the header repeated on each slide.
 4. Write the split Markdown files to the output directory.

@@ -15,12 +15,29 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+// TemplateSize represents predefined template dimensions
+type TemplateSize string
+
+const (
+	// TemplateSizeCard is a vertical card format (600x800px at 96 DPI ≈ 25 lines)
+	TemplateSizeCard TemplateSize = "card"
+	// TemplateSizeHorizontalCard is a horizontal card format (800x600px at 96 DPI ≈ 18 lines)
+	TemplateSizeHorizontalCard TemplateSize = "horizontal-card"
+	// TemplateSizePresentation is a standard presentation format (1920x1080px at 96 DPI ≈ 40 lines)
+	TemplateSizePresentation TemplateSize = "presentation"
+	// TemplateSizeA4 is an A4 page format (794x1123px at 96 DPI ≈ 50 lines)
+	TemplateSizeA4 TemplateSize = "a4"
+)
+
 // SplitOptions holds the configuration for splitting the Markdown file.
 type SplitOptions struct {
-	OutDir    string
-	MaxHeight int
-	MaxWidth  int
-	Theme     string
+	OutDir       string
+	MaxHeight    int
+	MaxWidth     int
+	Theme        string
+	TemplateSize TemplateSize // Predefined template size (overrides MaxHeight/MaxWidth if set)
+	FontSize     int          // Font size in points (default: 12)
+	DPI          int          // DPI for rendering (default: 96)
 }
 
 // Split takes a Markdown file as a byte slice and splits it into smaller files.
@@ -28,7 +45,33 @@ func Split(data []byte, opts SplitOptions) error {
 	if opts.OutDir == "" {
 		opts.OutDir = "."
 	}
-	if opts.MaxHeight == 0 {
+
+	// Set defaults for font size and DPI
+	if opts.FontSize == 0 {
+		opts.FontSize = 12
+	}
+	if opts.DPI == 0 {
+		opts.DPI = 96
+	}
+
+	// Apply template size presets if specified
+	if opts.TemplateSize != "" {
+		switch opts.TemplateSize {
+		case TemplateSizeCard:
+			opts.MaxHeight = 25
+			opts.MaxWidth = 600
+		case TemplateSizeHorizontalCard:
+			opts.MaxHeight = 18
+			opts.MaxWidth = 800
+		case TemplateSizePresentation:
+			opts.MaxHeight = 40
+			opts.MaxWidth = 1920
+		case TemplateSizeA4:
+			opts.MaxHeight = 50
+			opts.MaxWidth = 794
+		}
+	} else if opts.MaxHeight == 0 {
+		// Only set default MaxHeight if no template size was specified
 		opts.MaxHeight = 40
 	}
 

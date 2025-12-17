@@ -41,16 +41,48 @@ Requires Go 1.22 or newer.
 |------|-------------|---------|
 | `-in` | Markdown input file, or stdin when empty | — |
 | `-out` | Output directory for the split files | `.` |
-| `-max-height` | Maximum height of a slide in lines | 40 |
-| `-max-width` | Maximum width of a slide in pixels (not yet implemented) | 1024 |
+| `-max-height` | Maximum height of a slide in lines (overridden by `-template-size`) | 40 |
+| `-max-width` | Maximum width of a slide in pixels (overridden by `-template-size`) | 1024 |
+| `-template-size` | Predefined template size: `card`, `horizontal-card`, `presentation`, `a4` | — |
+| `-font-size` | Font size in points | 12 |
+| `-dpi` | DPI for rendering | 96 |
 | `-theme` | `light` or `dark` (not yet implemented) | `light` |
+
+#### Template Size Presets
+
+The `-template-size` flag provides convenient presets for common output formats:
+
+- **`card`**: Vertical card format (600×800px at 96 DPI ≈ 25 lines)
+- **`horizontal-card`**: Horizontal card format (800×600px at 96 DPI ≈ 18 lines)
+- **`presentation`**: Standard presentation format (1920×1080px at 96 DPI ≈ 40 lines)
+- **`a4`**: A4 page format (794×1123px at 96 DPI ≈ 50 lines)
+
+When using a template size preset, the `-max-height` and `-max-width` values are automatically set. You can still override them by explicitly setting those flags.
 
 ### Examples
 
-Split a Markdown file into slides:
+Split a Markdown file into slides with custom height:
 
 ```bash
 ./mdsplit -in example.md -out ./slides -max-height 50
+```
+
+Split using a presentation template:
+
+```bash
+./mdsplit -in example.md -out ./slides -template-size presentation
+```
+
+Split using a card template with larger font:
+
+```bash
+./mdsplit -in example.md -out ./slides -template-size card -font-size 16
+```
+
+Split for A4 printing at high DPI:
+
+```bash
+./mdsplit -in example.md -out ./slides -template-size a4 -dpi 300
 ```
 
 ---
