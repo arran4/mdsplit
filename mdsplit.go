@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	markdown "github.com/teekennedy/goldmark-markdown"
 	"github.com/yuin/goldmark"
@@ -28,21 +27,16 @@ func Split(data []byte, opts SplitOptions) error {
 	if opts.OutDir == "" {
 		opts.OutDir = "."
 	}
-	// Use MaxHeight as a proxy for max lines.
 	if opts.MaxHeight == 0 {
-		opts.MaxHeight = 40 // Default to 40 lines if not set
+		opts.MaxHeight = 40
 	}
 
-	// Create the output directory if it doesn't exist.
 	if err := os.MkdirAll(opts.OutDir, 0755); err != nil {
 		return err
 	}
 
-	// Create a new Goldmark parser and renderer.
 	parser := goldmark.New(goldmark.WithExtensions(gfm.GFM)).Parser()
 	renderer := markdown.NewRenderer()
-
-	// Parse the Markdown into an AST.
 	root := parser.Parse(text.NewReader(data))
 
 	var currentSlide bytes.Buffer
@@ -97,6 +91,7 @@ func Split(data []byte, opts SplitOptions) error {
 				if len(rows) <= chunkSize {
 					chunkSize = len(rows)
 				}
+			}
 
 				var slideContent bytes.Buffer
 				slideContent.WriteString(header)
@@ -107,12 +102,8 @@ func Split(data []byte, opts SplitOptions) error {
 				if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
 					return err
 				}
-
-				slideCount++
-				rows = rows[chunkSize:]
-				tablePart++
+				continue
 			}
-			continue
 		}
 
 		// Handle paragraphs that are too long.
@@ -172,7 +163,6 @@ func Split(data []byte, opts SplitOptions) error {
 		currentLineCount += nodeLineCount
 	}
 
-	// Write the last slide to a file.
 	if currentSlide.Len() > 0 {
 		if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 			return err
@@ -182,7 +172,6 @@ func Split(data []byte, opts SplitOptions) error {
 	return nil
 }
 
-// writeSlide writes the content of a slide to a file.
 func writeSlide(outDir string, slideCount int, content *bytes.Buffer) error {
 	filename := fmt.Sprintf("slide-%d.md", slideCount)
 	filepath := filepath.Join(outDir, filename)
