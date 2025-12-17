@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	markdown "github.com/teekennedy/goldmark-markdown"
 	"github.com/yuin/goldmark"
@@ -91,7 +92,6 @@ func Split(data []byte, opts SplitOptions) error {
 				if len(rows) <= chunkSize {
 					chunkSize = len(rows)
 				}
-			}
 
 				var slideContent bytes.Buffer
 				slideContent.WriteString(header)
@@ -101,6 +101,61 @@ func Split(data []byte, opts SplitOptions) error {
 
 				if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
 					return err
+				}
+
+				rows = rows[chunkSize:]
+				slideCount++
+				tablePart++
+			}
+			continue
+		}
+
+		// Handle fenced code blocks that are too long.
+		if node.Kind() == ast.KindFencedCodeBlock && nodeLineCount > opts.MaxHeight {
+			// Write current slide if not empty
+			if currentSlide.Len() > 0 {
+				if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
+					return err
+				}
+				slideCount++
+				currentSlide.Reset()
+				currentLineCount = 0
+			}
+
+			lines := strings.Split(nodeContent.String(), "\n")
+			// Remove trailing empty lines
+			for len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
+			}
+
+			if len(lines) >= 2 {
+				startFence := lines[0]
+				endFence := lines[len(lines)-1]
+				codeLines := lines[1 : len(lines)-1]
+
+				for len(codeLines) > 0 {
+					chunkSize := opts.MaxHeight - 2 // Account for fences
+					if chunkSize <= 0 {
+						chunkSize = 1
+					}
+					if len(codeLines) < chunkSize {
+						chunkSize = len(codeLines)
+					}
+
+					var slideContent bytes.Buffer
+					slideContent.WriteString(startFence)
+					slideContent.WriteString("\n")
+					slideContent.WriteString(strings.Join(codeLines[:chunkSize], "\n"))
+					slideContent.WriteString("\n")
+					slideContent.WriteString(endFence)
+					slideContent.WriteString("\n")
+
+					if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
+						return err
+					}
+
+					slideCount++
+					codeLines = codeLines[chunkSize:]
 				}
 				continue
 			}

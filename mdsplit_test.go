@@ -39,6 +39,59 @@ func TestSplit(t *testing.T) {
 			},
 		},
 		{
+			name:              "long codeblock",
+			input:             "```go\n" + strings.Repeat("fmt.Println(\"hello\")\n", 50) + "```",
+			opts:              SplitOptions{MaxHeight: 20},
+			expectedFileCount: 3,
+			expectedContentCheck: map[string]string{
+				"slide-1.md": "```go\n" + strings.Repeat("fmt.Println(\"hello\")\n", 18) + "```",
+			},
+		},
+		{
+			name: "comprehensive split",
+			input: `# Section 1
+
+This is the first section with some content.
+
+## Subsection 1.1
+
+| Name | Age | City |
+|------|-----|------|
+| Alice | 30 | NYC |
+| Bob | 25 | LA |
+| Charlie | 35 | SF |
+
+## Subsection 1.2
+
+Some more text here.
+
+# Section 2
+
+Final content here.`,
+			opts:              SplitOptions{MaxHeight: 12},
+			expectedFileCount: 3,
+			expectedContentCheck: map[string]string{
+				"slide-1.md": `# Section 1
+
+This is the first section with some content.
+
+## Subsection 1.1`,
+				"slide-2.md": `| Name | Age | City |
+|------|-----|------|
+| Alice | 30 | NYC |
+| Bob | 25 | LA |
+| Charlie | 35 | SF |
+
+
+## Subsection 1.2
+
+Some more text here.`,
+				"slide-3.md": `# Section 2
+
+Final content here.`,
+			},
+		},
+		{
 			name:              "size-based split",
 			input:             strings.Repeat("This is a line of text.\n", 100),
 			opts:              SplitOptions{MaxHeight: 40},
