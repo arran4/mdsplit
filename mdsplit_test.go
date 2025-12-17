@@ -57,7 +57,7 @@ func TestSplit(t *testing.T) {
 			expectedContentCheck: map[string]string{
 				"slide-1.md": `# mdsplit – Markdown Splitting (Go CLI & Library)
 
-` + "`mdsplit`" + ` splits large Markdown files into smaller "slides" for easier viewing on mobile devices. It ships as a CLI and as a library so you can call it from your own code. No Node, headless browsers, or helper scripts.
+` + "`mdsplit`" + ` splits large Markdown files into smaller "slides" for easier viewing on mobile devices. It ships as a CLI and as a library so you can call it from your own code. No Node, headless browsers, or helper scripts. It is intended to be used in conjunction with the [github.com/arran4/md2png](https://github.com/arran4/md2png) project.
 
 ---
 
@@ -82,8 +82,29 @@ go build ./cmd/mdsplit
 
 Dependencies are managed in ` + "`go.mod`" + ` and will be automatically downloaded by the ` + "`go build`" + ` command.
 
-Requires Go 1.22 or newer.`,
+Requires Go 1.22 or newer.
+
+---
+
+## CLI usage
+
+` + "```" + `bash
+./mdsplit -in README.md -out ./slides
+` + "```" + `
+
+### Flags`,
 				"slide-3.md": `---
+
+## How it works
+
+1. Parse Markdown with [` + "`yuin/goldmark`" + `](https://github.com/yuin/goldmark) and the [` + "`goldmark-gfm`" + `](https://github.com/yuin/goldmark-gfm) extension.
+2. Walk the AST and split the content into multiple smaller Markdown files based on a maximum line count.
+3. If a table is too long, it is split into multiple slides, with the header repeated on each slide.
+4. Write the split Markdown files to the output directory.
+
+Everything happens in memory; there is no HTML renderer or external process.
+
+---
 
 ## Roadmap
 
@@ -92,6 +113,7 @@ Requires Go 1.22 or newer.`,
 - [ ] Intelligent splitting of lists and code blocks.
 - [ ] Support for different output formats (e.g., a single HTML file with multiple sections).
 - [ ] Configurable themes via YAML/JSON.
+
 
 ---
 
