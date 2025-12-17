@@ -1,0 +1,89 @@
+project_name: mdsplit
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+builds:
+  - id: mdsplit
+    main: ./cmd/mdsplit
+    binary: mdsplit
+    gobinary: go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - 386
+    goarm:
+      - 6
+      - 7
+    ignore:
+      - goos: darwin
+        goarch: 386
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+    flags:
+      - -trimpath
+archives:
+  - id: release-archives
+    builds:
+      - mdsplit
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "darwin" }}macOS{{ else if eq .Os "linux" }}Linux{{ else if eq .Os "windows" }}Windows{{ else }}{{ title .Os }}{{ end }}_{{- if eq .Arch "386" }}i386{{ else if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{- with .Arm }}v{{ . }}{{ end }}'
+checksum:
+  name_template: '{{ .ProjectName }}_checksums.txt'
+nfpms:
+  - id: linux-packages
+    package_name: mdsplit
+    maintainer: 'Arran4 OSS <oss@arran4.com>'
+    description: 'mdsplit splits large Markdown files into smaller "slides" for easier viewing on mobile devices.'
+    homepage: 'https://github.com/arran4/mdsplit'
+    license: MIT
+    vendor: Arran4
+    formats:
+      - deb
+      - rpm
+      - apk
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/mdsplit/README.md
+        type: doc
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+release:
+  github:
+    owner: arran4
+    name: mdsplit
+  draft: false
+  prerelease: auto
+  footer: |
+    ### mdsplit binaries
+    Thanks for downloading mdsplit! If you run into any problems, please open an issue at https://github.com/arran4/mdsplit/issues.
+announce:
+  mastodon:
+    enabled: true
+    message_template: |
+      mdsplit {{ .Tag }} is out! Split large Markdown files into smaller "slides" for easier viewing on mobile devices.
+      Release notes: {{ .ReleaseURL }}
+      #golang #markdown
