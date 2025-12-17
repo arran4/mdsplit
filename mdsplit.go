@@ -44,8 +44,25 @@ func Split(data []byte, opts SplitOptions) error {
 	currentLineCount := 0
 
 	for node := root.FirstChild(); node != nil; node = node.NextSibling() {
-		// Handle long tables by splitting them at the AST level.
-		if table, ok := node.(*extast.Table); ok && (table.ChildCount()-1) > opts.MaxHeight {
+		var nodeContent bytes.Buffer
+
+		if err := safeRender(renderer, &nodeContent, data, node); err != nil {
+			return err
+		}
+
+		// Trim leading newlines to avoid double padding accumulated from previous nodes
+		trimmedBytes := bytes.TrimLeft(nodeContent.Bytes(), "\n")
+		nodeContent.Reset()
+		nodeContent.Write(trimmedBytes)
+
+		nodeLineCount := bytes.Count(nodeContent.Bytes(), []byte{'\n'})
+
+		// Handle paragraphs that are too long.
+		// fmt.Printf("DEBUG: Current Total: %d, Max: %d, Will Add: %v\n", currentLineCount, opts.MaxHeight, currentLineCount+nodeLineCount >= opts.MaxHeight)
+
+		// Handle tables that are too long.
+		if node.Kind() == extast.KindTable && nodeLineCount > opts.MaxHeight {
+			// Write the current slide if it has content.
 			if currentSlide.Len() > 0 {
 				if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 					return err
@@ -55,72 +72,84 @@ func Split(data []byte, opts SplitOptions) error {
 				currentLineCount = 0
 			}
 
-			var header ast.Node
-			var rows []ast.Node
-			for child := table.FirstChild(); child != nil; child = child.NextSibling() {
-				if child.Kind() == extast.KindTableHeader {
-					header = child
-				} else if child.Kind() == extast.KindTableRow {
-					rows = append(rows, child)
+			lines := strings.Split(nodeContent.String(), "\n")
+			// Remove trailing empty lines resulting from Split on string ending with newlines
+			for len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
+			}
+
+			header := lines[0] + "\n" + lines[1] + "\n"
+			rows := lines[2:]
+
+			tablePart := 1
+			for len(rows) > 0 {
+				continuationNote := fmt.Sprintf("\n_Table continued (part %d)_", tablePart)
+				chunkSize := opts.MaxHeight - 3 // Account for header and continuation note.
+				if chunkSize <= 0 {
+					chunkSize = 1
+				}
+				if len(rows) <= chunkSize {
+					chunkSize = len(rows)
 				}
 			}
 
-			if header != nil {
-				tablePart := 1
-				for len(rows) > 0 {
-					// Account for header, separator, and continuation note.
-					chunkSize := opts.MaxHeight - 2
-					if chunkSize <= 0 {
-						chunkSize = 1
-					}
-					if len(rows) < chunkSize {
-						chunkSize = len(rows)
-					}
-					chunk := rows[:chunkSize]
-					rows = rows[chunkSize:]
+				var slideContent bytes.Buffer
+				slideContent.WriteString(header)
+				slideContent.WriteString(strings.Join(rows[:chunkSize], "\n"))
+				slideContent.WriteString("\n")
+				slideContent.WriteString(continuationNote)
 
-					newTable := extast.NewTable()
-					newTable.Alignments = table.Alignments
-					// Manually reconstruct the header for each new table chunk.
-					newTable.AppendChild(newTable, manuallyCloneHeader(header, data))
-					for _, row := range chunk {
-						// We can move the row nodes directly to the new table,
-						// but it's safer to clone them as well.
-						// For now, we'll move them.
-						row.SetParent(nil)
-						newTable.AppendChild(newTable, row)
-					}
-
-					var slideContent bytes.Buffer
-					if err := renderer.Render(&slideContent, data, newTable); err != nil {
-						return err
-					}
-					// Add continuation note if there are more rows.
-					if len(rows) > 0 || tablePart > 1 {
-						note := fmt.Sprintf("\n_Table continued (part %d)_", tablePart)
-						if len(rows) == 0 {
-							note = fmt.Sprintf("\n_Table continued (part %d - final part)_", tablePart)
-						}
-						slideContent.WriteString(note)
-					}
-
-					if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
-						return err
-					}
-					slideCount++
-					tablePart++
+				if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
+					return err
 				}
 				continue
 			}
 		}
 
-		// Process regular nodes.
-		var nodeContent bytes.Buffer
-		if err := renderer.Render(&nodeContent, data, node); err != nil {
-			return err
-		}
-		nodeLineCount := bytes.Count(nodeContent.Bytes(), []byte{'\n'})
+		// Handle paragraphs that are too long.
+		if node.Kind() == ast.KindParagraph && nodeLineCount > opts.MaxHeight {
+			// Write the current slide if it has content.
+			if currentSlide.Len() > 0 {
+				if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
+					return err
+				}
+				slideCount++
+				currentSlide.Reset()
+				currentLineCount = 0
+			}
 
+			lines := strings.Split(nodeContent.String(), "\n")
+			// Remove trailing empty lines
+			for len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
+			}
+
+			// Split paragraph into chunks
+			for len(lines) > 0 {
+				chunkSize := opts.MaxHeight
+				if len(lines) < chunkSize {
+					chunkSize = len(lines)
+				}
+
+				var slideContent bytes.Buffer
+				slideContent.WriteString(strings.Join(lines[:chunkSize], "\n"))
+				// Append newline if needed? strings.Join doesn't add trailing newline.
+				// But original lines didn't have it (Split removed it).
+				// We should add it back?
+				// Paragraphs implies text.
+				slideContent.WriteString("\n")
+
+				if err := writeSlide(opts.OutDir, slideCount, &slideContent); err != nil {
+					return err
+				}
+
+				slideCount++
+				lines = lines[chunkSize:]
+			}
+			continue
+		}
+
+		// write the current slide and start a new one.
 		if currentSlide.Len() > 0 && currentLineCount+nodeLineCount > opts.MaxHeight {
 			if err := writeSlide(opts.OutDir, slideCount, &currentSlide); err != nil {
 				return err
@@ -149,20 +178,108 @@ func writeSlide(outDir string, slideCount int, content *bytes.Buffer) error {
 	return os.WriteFile(filepath, content.Bytes(), 0644)
 }
 
-// manuallyCloneHeader creates a deep copy of a table header node.
-func manuallyCloneHeader(header ast.Node, source []byte) ast.Node {
-	headerRow := header.FirstChild()
-	newHeaderRow := extast.NewTableRow(nil)
-	for cell := headerRow.FirstChild(); cell != nil; cell = cell.NextSibling() {
-		newCell := extast.NewTableCell()
-		for textNode := cell.FirstChild(); textNode != nil; textNode = textNode.NextSibling() {
-			if text, ok := textNode.(*ast.Text); ok {
-				newText := ast.NewText()
-				newText.Segment = text.Segment
-				newCell.AppendChild(newCell, newText)
+func safeRender(renderer *markdown.Renderer, w *bytes.Buffer, source []byte, n ast.Node) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Fallback: extract raw lines from source by finding the range covered by the node and its children
+			start, stop := getNodeBounds(n)
+			if start != -1 && stop != -1 {
+				// Expand to full lines
+				for start > 0 && source[start-1] != '\n' {
+					start--
+				}
+				for stop < len(source) && source[stop] != '\n' {
+					stop++
+				}
+				// Include the newline at the end if present
+				if stop < len(source) && source[stop] == '\n' {
+					stop++
+				}
+
+				if start < stop {
+					content := source[start:stop]
+					if n.Kind() == ast.KindParagraph {
+						content = wrapText(content, 60)
+					}
+					w.Write(content)
+					// Append newlines to mimic Block spacing usually added by renderer.
+					w.Write([]byte("\n\n"))
+				}
+			}
+			err = nil
+		}
+	}()
+	err = renderer.Render(w, source, n)
+	if err == nil {
+		// Ensure block spacing even if renderer was tight
+		if w.Len() > 0 && !bytes.HasSuffix(w.Bytes(), []byte("\n\n")) {
+			if bytes.HasSuffix(w.Bytes(), []byte("\n")) {
+				w.Write([]byte("\n"))
+			} else {
+				w.Write([]byte("\n\n"))
 			}
 		}
-		newHeaderRow.AppendChild(newHeaderRow, newCell)
 	}
-	return extast.NewTableHeader(newHeaderRow)
+	return err
+}
+
+func getNodeBounds(n ast.Node) (int, int) {
+	start := -1
+	stop := -1
+
+	updateBounds := func(s, e int) {
+		if start == -1 || s < start {
+			start = s
+		}
+		if stop == -1 || e > stop {
+			stop = e
+		}
+	}
+
+	if n.Type() == ast.TypeBlock {
+		lines := n.Lines()
+		if lines != nil {
+			for i := 0; i < lines.Len(); i++ {
+				segment := lines.At(i)
+				updateBounds(segment.Start, segment.Stop)
+			}
+		}
+	}
+
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		cStart, cStop := getNodeBounds(c)
+		if cStart != -1 {
+			updateBounds(cStart, cStop)
+		}
+	}
+
+	return start, stop
+}
+
+func wrapText(text []byte, limit int) []byte {
+	var result bytes.Buffer
+	for _, line := range bytes.Split(text, []byte{'\n'}) {
+		if len(line) == 0 {
+			result.WriteByte('\n')
+			continue
+		}
+		words := bytes.Fields(line)
+		if len(words) == 0 {
+			continue
+		}
+		currentLineLen := 0
+		for i, word := range words {
+			if currentLineLen+len(word)+1 > limit && currentLineLen > 0 {
+				result.WriteByte('\n')
+				currentLineLen = 0
+			} else if i > 0 {
+				result.WriteByte(' ')
+				currentLineLen++
+			}
+			result.Write(word)
+			currentLineLen += len(word)
+		}
+		result.WriteByte('\n')
+	}
+	return result.Bytes()
 }
