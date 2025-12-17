@@ -1,6 +1,6 @@
 # mdsplit – Markdown Splitting (Go CLI & Library)
 
-`mdsplit` splits large Markdown files into smaller "slides" for easier viewing on mobile devices. It ships as a CLI and as a library so you can call it from your own code. No Node, headless browsers, or helper scripts.
+`mdsplit` splits large Markdown files into smaller "slides" for easier viewing on mobile devices. It ships as a CLI and as a library so you can call it from your own code. No Node, headless browsers, or helper scripts. It is intended to be used in conjunction with the [github.com/arran4/md2png](https://github.com/arran4/md2png) project.
 
 ---
 
