@@ -112,7 +112,7 @@ func NewRoot(name, version, commit, date string) (*RootCmd, error) {
 
 	c.CommandAction = func(c *RootCmd) error {
 
-		err := Run(c.in, c.out, c.maxHeight, c.maxWidth, c.theme, c.templateSize, c.fontSize, c.dpi)
+		err := mdsplit.Run(c.in, c.out, c.maxHeight, c.maxWidth, c.theme, c.templateSize, c.fontSize, c.dpi)
 		if err != nil {
 			if errors.Is(err, cmd.ErrPrintHelp) {
 				c.Usage()
